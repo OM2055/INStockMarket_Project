@@ -1,0 +1,9 @@
+pandas
+#numpy
+yfinance
+requests
+streamlit
+crewai
+apscheduler
+python-dotenv
+scikit-learn
