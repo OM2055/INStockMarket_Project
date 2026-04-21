@@ -1,0 +1,149 @@
+import os
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from st_aggrid import AgGrid, GridOptionsBuilder
+
+st.set_page_config(layout="wide")
+
+# -------------------------
+# STYLE (bigger fonts + header color)
+# -------------------------
+st.markdown("""
+<style>
+    html, body, [class*="css"] {
+        font-size: 16px;
+    }
+
+    .stDataFrame thead tr th {
+        background-color: #111827 !important;
+        color: white !important;
+        font-size: 16px !important;
+    }
+
+    .buy {
+        background-color: #d1fae5 !important;
+    }
+
+    .sell {
+        background-color: #fee2e2 !important;
+    }
+
+    .hold {
+        background-color: #fef3c7 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🚀 NSE AI Quant Dashboard")
+
+# -------------------------
+# LOAD DATA
+# -------------------------
+try:
+    df = pd.read_csv("output/stocks.csv")
+except:
+    st.error("❌ Run pipeline first")
+    st.stop()
+
+if df.empty:
+    st.error("❌ No data found in CSV")
+    st.stop()
+
+# -------------------------
+# CREATE SIGNALS
+# -------------------------
+def generate_signal(row):
+    try:
+        if row["rsi"] > 55 and row["price"] > row["dma50"]:
+            return "BUY"
+        elif row["rsi"] < 45:
+            return "SELL"
+        else:
+            return "HOLD"
+    except:
+        return "HOLD"
+
+df["signal"] = df.apply(generate_signal, axis=1)
+
+# -------------------------
+# COLOR TAGGING
+# -------------------------
+def color_row(row):
+    if row["signal"] == "BUY":
+        return ['background-color: #d1fae5'] * len(row)
+    elif row["signal"] == "SELL":
+        return ['background-color: #fee2e2'] * len(row)
+    else:
+        return ['background-color: #fef3c7'] * len(row)
+
+# -------------------------
+# MARKET OVERVIEW
+# -------------------------
+st.subheader("🔥 Market Overview")
+
+gb = GridOptionsBuilder.from_dataframe(df)
+gb.configure_pagination()
+gb.configure_default_column(filter=True, sortable=True, resizable=True)
+
+gridOptions = gb.build()
+
+AgGrid(df, gridOptions=gridOptions, height=300)
+
+# -------------------------
+# BUY SIGNALS
+# -------------------------
+st.subheader("🚀 Buy Signals")
+
+buy_df = df[df["signal"] == "BUY"]
+
+if buy_df.empty:
+    st.warning("No BUY signals found")
+else:
+    AgGrid(buy_df, height=250)
+
+# -------------------------
+# STOCK SELECTOR
+# -------------------------
+st.subheader("📊 Stock Analysis")
+
+stock = st.selectbox("Select Stock", df["symbol"].unique())
+
+row = df[df["symbol"] == stock]
+
+if row.empty:
+    st.warning("No data for selected stock")
+    st.stop()
+
+row = row.iloc[0]
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Price", round(row.get("price", 0), 2))
+col2.metric("RSI", round(row.get("rsi", 0), 2))
+col3.metric("Momentum", round(row.get("momentum", 0), 2))
+col4.metric("Signal", row.get("signal", "NA"))
+
+# -------------------------
+# PRICE CHART
+# -------------------------
+
+st.subheader("📈 Price Chart (6 Months)")
+
+file_path = f"output/history/{stock}.csv"
+
+if os.path.exists(file_path):
+    chart_df = pd.read_csv(file_path)
+
+    if not chart_df.empty and "Close" in chart_df.columns:
+        st.line_chart(chart_df.set_index("Date")["Close"])
+    else:
+        st.warning("No valid chart data")
+else:
+    st.warning(f"No history file for {stock}")
+
+# -------------------------
+# FULL DATA
+# -------------------------
+st.subheader("📦 Full Data")
+st.dataframe(df.style.apply(color_row, axis=1))
